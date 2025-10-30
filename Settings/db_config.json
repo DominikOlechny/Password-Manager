@@ -1,0 +1,8 @@
+{
+  "driver": "ODBC Driver 17 for SQL Server",
+  "server": "localhost",
+  "port": 1433,
+  "database": "PasswordManagerDB",
+  "username": "sa",
+  "password": "L:f>oKgcgoW>=b"
+}

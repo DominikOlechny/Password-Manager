@@ -1,5 +1,10 @@
+# connection_database.py
 import json
 import pyodbc
+import base64
+
+# nowo: import kryptografii z modułu użytkownika
+from crypto_module import encrypt as aes_encrypt, decrypt as aes_decrypt, aes_key  # noqa
 
 USERS_TABLE_SQL = """
 IF NOT EXISTS (
@@ -33,9 +38,7 @@ def _conn_str(cfg, with_db: bool) -> str:
     return base + (f"DATABASE={cfg['database']};" if with_db else "")
 
 def create_database_if_missing(cfg: dict) -> bool:
-    """Tworzy bazę jeśli nie istnieje oraz tabelę dbo.users. Zwraca True/False."""
     try:
-        # Połączenie do serwera bez wyboru bazy
         with pyodbc.connect(_conn_str(cfg, with_db=False), autocommit=True, timeout=5) as conn:
             cur = conn.cursor()
             cur.execute(
@@ -47,7 +50,6 @@ def create_database_if_missing(cfg: dict) -> bool:
         return False
 
     try:
-        # Połączenie do bazy i utworzenie tabeli users
         with pyodbc.connect(_conn_str(cfg, with_db=True), autocommit=True, timeout=5) as conn_db:
             cur = conn_db.cursor()
             cur.execute(USERS_TABLE_SQL)
@@ -56,22 +58,16 @@ def create_database_if_missing(cfg: dict) -> bool:
         return False
 
 def connect_to_database(config_path: str = "Settings\\db_config.json"):
-    """
-    Łączy się z bazą. Jeśli baza nie istnieje, próbuje ją utworzyć.
-    Zwraca pyodbc.Connection lub False gdy połączenie się nie powiedzie.
-    """
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
     except Exception:
         return False
 
-    # Próba bezpośredniego połączenia do bazy
     try:
         conn = pyodbc.connect(_conn_str(cfg, with_db=True), autocommit=True, timeout=5)
         return conn
     except pyodbc.Error as e:
-        # Spróbuj utworzyć bazę tylko, gdy problem to brak bazy
         msg = str(e)
         if "Cannot open database" in msg or "does not exist" in msg:
             if not create_database_if_missing(cfg):
@@ -81,18 +77,48 @@ def connect_to_database(config_path: str = "Settings\\db_config.json"):
                 return conn
             except pyodbc.Error:
                 return False
-        # Inne błędy (sieć, timeout, DNS, brak instancji) -> False
         return False
 
+# --- narzędzia do szyfrowania haseł ---
+
+def _pack_nonce_ct(nonce: bytes, ct: bytes) -> str:
+    """Pakuj nonce i ciphertext do JSON jako base64."""
+    return json.dumps({
+        "n": base64.b64encode(nonce).decode("ascii"),
+        "c": base64.b64encode(ct).decode("ascii"),
+    }, separators=(",", ":"))
+
+def _unpack_nonce_ct(packed: str) -> tuple[bytes, bytes]:
+    obj = json.loads(packed)
+    return base64.b64decode(obj["n"]), base64.b64decode(obj["c"])
+
+def _encrypt_pwd_str(pwd_plain: str) -> str:
+    """Zwraca JSON z nonce i ciphertext w base64."""
+    ct, nonce = aes_encrypt(pwd_plain.encode("utf-8"), aes_key)
+    return _pack_nonce_ct(nonce, ct)
+
+def _try_decrypt_pwd_to_str(stored: str) -> tuple[bool, str]:
+    """
+    Próbuje odszyfrować zapisany JSON. Jeśli to nie JSON, traktuje jako plaintext.
+    Zwraca (ok, plaintext).
+    """
+    try:
+        nonce, ct = _unpack_nonce_ct(stored)
+        plain = aes_decrypt(ct, nonce, aes_key).decode("utf-8")
+        return True, plain
+    except Exception:
+        # wsteczna zgodność: stare rekordy trzymane jako plaintext
+        return False, stored
 
 # --- Rejestracja użytkownika ---
 def insert_user(conn, login, password, created_at):
     try:
         cur = conn.cursor()
+        secured = _encrypt_pwd_str(password)  # szyfrowanie przed zapisem
         cur.execute("""
             INSERT INTO dbo.users (login, secured_pwd, created_at, updated_at)
             VALUES (?, ?, ?, ?)
-        """, (login, password, created_at, created_at))
+        """, (login, secured, created_at, created_at))
         conn.commit()
         return True
     except Exception as e:
@@ -106,11 +132,16 @@ def check_user_exists(conn, login):
         return cur.fetchone() is not None
     except Exception as e:
         print("Błąd przy sprawdzaniu użytkownika:", e)
-        return False  
+        return False
 
-# --- Logowanie użytkownika---
+# --- Logowanie użytkownika ---
 def user_login(login: str, pwd_plain: str):
-    """Sprawdza poprawność danych logowania w bazie. Zwraca True/False."""
+    """
+    Weryfikuje logowanie:
+    - Jeśli konto zablokowane -> False
+    - Deszyfruje secured_pwd i porównuje z pwd_plain
+    - Liczy próby i blokuje po >=5
+    """
     conn = connect_to_database()
     if conn is False:
         return False
@@ -118,36 +149,26 @@ def user_login(login: str, pwd_plain: str):
     cur = None
     try:
         cur = conn.cursor()
-        # Sprawdź czy konto zablokowane
-        cur.execute("SELECT failed_attempts, is_locked FROM dbo.users WHERE login = ?", (login,))
-        user = cur.fetchone()
-        if user is None:
+        cur.execute("SELECT failed_attempts, is_locked, secured_pwd FROM dbo.users WHERE login = ?", (login,))
+        row = cur.fetchone()
+        if row is None:
             return False
 
-        failed_attempts, is_locked = user
+        failed_attempts, is_locked, stored_sec = row
 
         if is_locked:
             print("Konto zablokowane.")
             return False
 
-        # Sprawdź poprawność danych logowania
-        cur.execute(
-            "SELECT users_id FROM dbo.users WHERE login = ? AND secured_pwd = ?",
-            (login, pwd_plain)
-        )
-        row = cur.fetchone()
+        # odszyfrowanie lub porównanie do wstecznie zgodnego plaintextu
+        _, stored_plain = _try_decrypt_pwd_to_str(stored_sec)
 
-        if row:
-            # Reset liczby nieudanych prób po poprawnym logowaniu
-            cur.execute(
-                "UPDATE dbo.users SET failed_attempts = 0 WHERE login = ?",
-                (login,)
-            )
+        if stored_plain == pwd_plain:
+            cur.execute("UPDATE dbo.users SET failed_attempts = 0 WHERE login = ?", (login,))
             conn.commit()
             return True
         else:
-            # Zwiększ licznik nieudanych prób
-            new_attempts = failed_attempts + 1
+            new_attempts = (failed_attempts or 0) + 1
             if new_attempts >= 5:
                 cur.execute(
                     "UPDATE dbo.users SET failed_attempts = ?, is_locked = 1 WHERE login = ?",

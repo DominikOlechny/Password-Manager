@@ -1,7 +1,5 @@
 import json
 import pyodbc
-import getpass
-from datetime import datetime
 
 USERS_TABLE_SQL = """
 IF NOT EXISTS (
@@ -34,104 +32,105 @@ def _conn_str(cfg, with_db: bool) -> str:
     )
     return base + (f"DATABASE={cfg['database']};" if with_db else "")
 
-def create_database_if_missing(cfg: dict):
-    """Tworzy bazę jeśli nie istnieje, a potem tabelę dbo.users."""
-    # Połączenie do serwera bez wyboru bazy
-    with pyodbc.connect(_conn_str(cfg, with_db=False), autocommit=True, timeout=5) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = ?) "
-            f"BEGIN CREATE DATABASE [{cfg['database']}] END",
-            (cfg["database"],)
-        )
+def create_database_if_missing(cfg: dict) -> bool:
+    """Tworzy bazę jeśli nie istnieje oraz tabelę dbo.users. Zwraca True/False."""
+    try:
+        # Połączenie do serwera bez wyboru bazy
+        with pyodbc.connect(_conn_str(cfg, with_db=False), autocommit=True, timeout=5) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = ?) "
+                f"BEGIN CREATE DATABASE [{cfg['database']}] END",
+                (cfg["database"],)
+            )
+    except pyodbc.Error:
+        return False
 
-    # Połączenie do nowej/istniejącej bazy i utworzenie tabeli users
-    with pyodbc.connect(_conn_str(cfg, with_db=True), autocommit=True, timeout=5) as conn_db:
-        cur = conn_db.cursor()
-        cur.execute(USERS_TABLE_SQL)
+    try:
+        # Połączenie do bazy i utworzenie tabeli users
+        with pyodbc.connect(_conn_str(cfg, with_db=True), autocommit=True, timeout=5) as conn_db:
+            cur = conn_db.cursor()
+            cur.execute(USERS_TABLE_SQL)
+        return True
+    except pyodbc.Error:
+        return False
 
 def connect_to_database(config_path: str = "Settings\\db_config.json"):
-    """Łączy się z bazą. Jeśli baza nie istnieje, tworzy ją i tabelę dbo.users, potem łączy ponownie."""
-    with open(config_path, "r", encoding="utf-8") as f:
-        cfg = json.load(f)
+    """
+    Łączy się z bazą. Jeśli baza nie istnieje, próbuje ją utworzyć.
+    Zwraca pyodbc.Connection lub False gdy połączenie się nie powiedzie.
+    """
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        return False
 
+    # Próba bezpośredniego połączenia do bazy
     try:
         conn = pyodbc.connect(_conn_str(cfg, with_db=True), autocommit=True, timeout=5)
         return conn
     except pyodbc.Error as e:
-        # Gdy baza nie istnieje lub brak dostępu – spróbuj utworzyć
-        if "Cannot open database" in str(e) or "Login failed for user" not in str(e):
-            create_database_if_missing(cfg)
-            return pyodbc.connect(_conn_str(cfg, with_db=True), autocommit=True, timeout=5)
-        raise
+        # Spróbuj utworzyć bazę tylko, gdy problem to brak bazy
+        msg = str(e)
+        if "Cannot open database" in msg or "does not exist" in msg:
+            if not create_database_if_missing(cfg):
+                return False
+            try:
+                conn = pyodbc.connect(_conn_str(cfg, with_db=True), autocommit=True, timeout=5)
+                return conn
+            except pyodbc.Error:
+                return False
+        # Inne błędy (sieć, timeout, DNS, brak instancji) -> False
+        return False
 
 
-
-import getpass
-import pyodbc
-from datetime import datetime
-
-def user_registration():
-    """
-    Rejestruje nowego użytkownika w tabeli dbo.users.
-    Hasło przechowywane w formie jawnej (NVARCHAR).
-    """
-    conn = connect_to_database()  # używa wcześniej zdefiniowanej funkcji
+# --- Rejestracja użytkownika ---
+def insert_user(conn, login, password, created_at):
     try:
         cur = conn.cursor()
-
-        login = input("Podaj login: ").strip()
-        if not login:
-            print("Login nie może być pusty.")
-            return
-
-        pwd_plain = getpass.getpass("Podaj hasło: ")
-        if not pwd_plain:
-            print("Hasło nie może być puste.")
-            return
-
-        # sprawdzenie duplikatu
-        cur.execute("SELECT 1 FROM dbo.users WHERE login = ?", (login,))
-        if cur.fetchone():
-            print("Użytkownik o takim loginie już istnieje.")
-            return
-
-        now = datetime.utcnow()
-
-        # zapis hasła w formie tekstowej
         cur.execute("""
             INSERT INTO dbo.users (login, secured_pwd, created_at, updated_at)
             VALUES (?, ?, ?, ?)
-        """, (login, pwd_plain, now, now))
-
+        """, (login, password, created_at, created_at))
         conn.commit()
-        print(f"Użytkownik '{login}' został zarejestrowany.")
-
+        return True
     except Exception as e:
-        print("Błąd podczas rejestracji:", e)
-    finally:
-        cur.close()
-        conn.close()
+        print("Błąd przy dodawaniu użytkownika:", e)
+        return False
 
-def user_login():
-    """
-    Logowanie użytkownika.
-    Sprawdza, czy istnieje rekord w dbo.users z podanym loginem i hasłem (plaintext).
-    """
-    conn = connect_to_database()
+def check_user_exists(conn, login):
     try:
         cur = conn.cursor()
+        cur.execute("SELECT 1 FROM dbo.users WHERE login = ?", (login,))
+        return cur.fetchone() is not None
+    except Exception as e:
+        print("Błąd przy sprawdzaniu użytkownika:", e)
+        return False  
 
-        login = input("Login: ").strip()
-        if not login:
-            print("Login nie może być pusty.")
-            return
+# --- Logowanie użytkownika---
+def user_login(login: str, pwd_plain: str):
+    """Sprawdza poprawność danych logowania w bazie. Zwraca True/False."""
+    conn = connect_to_database()
+    if conn is False:
+        return False
 
-        pwd_plain = getpass.getpass("Hasło: ")
-        if not pwd_plain:
-            print("Hasło nie może być puste.")
-            return
+    cur = None
+    try:
+        cur = conn.cursor()
+        # Sprawdź czy konto zablokowane
+        cur.execute("SELECT failed_attempts, is_locked FROM dbo.users WHERE login = ?", (login,))
+        user = cur.fetchone()
+        if user is None:
+            return False
 
+        failed_attempts, is_locked = user
+
+        if is_locked:
+            print("Konto zablokowane.")
+            return False
+
+        # Sprawdź poprawność danych logowania
         cur.execute(
             "SELECT users_id FROM dbo.users WHERE login = ? AND secured_pwd = ?",
             (login, pwd_plain)
@@ -139,16 +138,35 @@ def user_login():
         row = cur.fetchone()
 
         if row:
-            print(f"Zalogowano pomyślnie jako '{login}'. (ID: {row[0]})")
+            # Reset liczby nieudanych prób po poprawnym logowaniu
+            cur.execute(
+                "UPDATE dbo.users SET failed_attempts = 0 WHERE login = ?",
+                (login,)
+            )
+            conn.commit()
             return True
         else:
-            print("Nieprawidłowy login lub hasło.")
+            # Zwiększ licznik nieudanych prób
+            new_attempts = failed_attempts + 1
+            if new_attempts >= 5:
+                cur.execute(
+                    "UPDATE dbo.users SET failed_attempts = ?, is_locked = 1 WHERE login = ?",
+                    (new_attempts, login)
+                )
+                conn.commit()
+                print("Konto zablokowane po 5 nieudanych próbach logowania.")
+            else:
+                cur.execute(
+                    "UPDATE dbo.users SET failed_attempts = ? WHERE login = ?",
+                    (new_attempts, login)
+                )
+                conn.commit()
+                print(f"Błędne dane logowania. Próba {new_attempts}/5.")
             return False
 
     except Exception as e:
-        print("Błąd podczas logowania:", e)
+        print(f"Błąd logowania: {e}")
         return False
     finally:
-        cur.close()
-        conn.close()
-
+        if cur is not None:
+            cur.close()

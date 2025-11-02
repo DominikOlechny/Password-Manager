@@ -3,8 +3,6 @@ from Crypto.Random import get_random_bytes
 import base64, os, json
 from datetime import datetime, timezone
 
-data = b"secret data to transmit"
-
 def create_key_json(path="Settings\\crypto_config.json"):
     key = get_random_bytes(32)  # AES-256
     payload = {
@@ -12,7 +10,7 @@ def create_key_json(path="Settings\\crypto_config.json"):
         "kid": "aes-key-1",
         "alg": "A256CTR",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "k_b64": "2V+g5JR25rPIfIACu/iKm0iW+D22UKctxKmicmX8DLU="
+        "k_b64": base64.b64encode(key).decode("ascii")
     }
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:

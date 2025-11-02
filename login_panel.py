@@ -1,6 +1,8 @@
 import getpass
 from datetime import datetime
 from connection_database import insert_user, check_user_exists, connect_to_database, user_login
+from settings_edit import settings_modify
+
 
 def menu_registration():
     """Rejestruje nowego użytkownika w dbo.users. Zwraca True/False."""
@@ -58,7 +60,8 @@ def main_menu():
         print("\n--- MENU ---")
         print("1. Zaloguj")
         print("2. Zarejestruj")
-        print("3. Wyjdz z programu")
+        print("3. Opcje polaczenia")
+        print("4. wyjdz")
 
         choice = input("Wybierz opcje (1-3): ").strip()
 
@@ -69,6 +72,9 @@ def main_menu():
         elif choice == "2":
             menu_registration()
         elif choice == "3":
+            print("Wprowadz dane polaczenia z serwerem")
+            settings_modify()
+        elif choice == "4":
             print("Zamykanie programu...")
             sys.exit()
         else:

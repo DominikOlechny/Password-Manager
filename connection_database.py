@@ -2,9 +2,7 @@
 import json
 import pyodbc
 import base64
-
-# nowo: import kryptografii z modułu użytkownika
-from crypto_module import encrypt as aes_encrypt, decrypt as aes_decrypt, aes_key  # noqa
+from crypto_module import encrypt as aes_encrypt, decrypt as aes_decrypt, get_aes_key
 
 USERS_TABLE_SQL = """
 IF NOT EXISTS (
@@ -26,6 +24,7 @@ BEGIN
 END
 """
 
+
 def _conn_str(cfg, with_db: bool) -> str:
     driver = cfg.get("driver", "ODBC Driver 18 for SQL Server")
     server = cfg["server"]
@@ -36,6 +35,7 @@ def _conn_str(cfg, with_db: bool) -> str:
         "Encrypt=yes;TrustServerCertificate=yes;"
     )
     return base + (f"DATABASE={cfg['database']};" if with_db else "")
+
 
 def create_database_if_missing(cfg: dict) -> bool:
     try:
@@ -56,6 +56,7 @@ def create_database_if_missing(cfg: dict) -> bool:
         return True
     except pyodbc.Error:
         return False
+
 
 def connect_to_database(config_path: str = "Settings\\db_config.json"):
     try:
@@ -79,68 +80,96 @@ def connect_to_database(config_path: str = "Settings\\db_config.json"):
                 return False
         return False
 
-# --- narzędzia do szyfrowania haseł ---
+
+# --- narzedzia do szyfrowania hasel ---
+
 
 def _pack_nonce_ct(nonce: bytes, ct: bytes) -> str:
     """Pakuj nonce i ciphertext do JSON jako base64."""
-    return json.dumps({
-        "n": base64.b64encode(nonce).decode("ascii"),
-        "c": base64.b64encode(ct).decode("ascii"),
-    }, separators=(",", ":"))
+    return json.dumps(
+        {
+            "n": base64.b64encode(nonce).decode("ascii"),
+            "c": base64.b64encode(ct).decode("ascii"),
+        },
+        separators=(",", ":"),
+    )
+
 
 def _unpack_nonce_ct(packed: str) -> tuple[bytes, bytes]:
     obj = json.loads(packed)
     return base64.b64decode(obj["n"]), base64.b64decode(obj["c"])
 
+
 def _encrypt_pwd_str(pwd_plain: str) -> str:
     """Zwraca JSON z nonce i ciphertext w base64."""
-    ct, nonce = aes_encrypt(pwd_plain.encode("utf-8"), aes_key)
+    key = get_aes_key()  # tu zamiast aes_key
+    ct, nonce = aes_encrypt(pwd_plain.encode("utf-8"), key)
     return _pack_nonce_ct(nonce, ct)
+
 
 def _try_decrypt_pwd_to_str(stored: str) -> tuple[bool, str]:
     """
-    Próbuje odszyfrować zapisany JSON. Jeśli to nie JSON, traktuje jako plaintext.
+    Probuje odszyfrowac zapisany JSON. Jesli to nie JSON, traktuje jako plaintext.
     Zwraca (ok, plaintext).
     """
     try:
         nonce, ct = _unpack_nonce_ct(stored)
-        plain = aes_decrypt(ct, nonce, aes_key).decode("utf-8")
+        key = get_aes_key()  # tu zamiast aes_key
+        plain = aes_decrypt(ct, nonce, key).decode("utf-8")
         return True, plain
     except Exception:
-        # wsteczna zgodność: stare rekordy trzymane jako plaintext
+        # wsteczna zgodnosc: stare rekordy trzymane jako plaintext
         return False, stored
 
-# --- Rejestracja użytkownika ---
+
+# --- Rejestracja uzytkownika ---
+
+
 def insert_user(conn, login, password, created_at):
+    cur = None
     try:
         cur = conn.cursor()
         secured = _encrypt_pwd_str(password)  # szyfrowanie przed zapisem
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO dbo.users (login, secured_pwd, created_at, updated_at)
             VALUES (?, ?, ?, ?)
-        """, (login, secured, created_at, created_at))
+        """,
+            (login, secured, created_at, created_at),
+        )
         conn.commit()
         return True
     except Exception as e:
-        print("Błąd przy dodawaniu użytkownika:", e)
+        print("Blad przy dodawaniu uzytkownika:", e)
         return False
+    finally:
+        if cur is not None:
+            cur.close()
+
 
 def check_user_exists(conn, login):
+    cur = None
     try:
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM dbo.users WHERE login = ?", (login,))
         return cur.fetchone() is not None
     except Exception as e:
-        print("Błąd przy sprawdzaniu użytkownika:", e)
+        print("Blad przy sprawdzaniu uzytkownika:", e)
         return False
+    finally:
+        if cur is not None:
+            cur.close()
 
-# --- Logowanie użytkownika ---
+
+# --- Logowanie uzytkownika ---
+
+
 def user_login(login: str, pwd_plain: str):
     """
     Weryfikuje logowanie:
-    - Jeśli konto zablokowane -> False
-    - Deszyfruje secured_pwd i porównuje z pwd_plain
-    - Liczy próby i blokuje po >=5
+    - Jesli konto zablokowane -> False
+    - Deszyfruje secured_pwd i porownuje z pwd_plain
+    - Liczy proby i blokuje po >=5
     """
     conn = connect_to_database()
     if conn is False:
@@ -149,7 +178,10 @@ def user_login(login: str, pwd_plain: str):
     cur = None
     try:
         cur = conn.cursor()
-        cur.execute("SELECT failed_attempts, is_locked, secured_pwd FROM dbo.users WHERE login = ?", (login,))
+        cur.execute(
+            "SELECT failed_attempts, is_locked, secured_pwd FROM dbo.users WHERE login = ?",
+            (login,),
+        )
         row = cur.fetchone()
         if row is None:
             return False
@@ -160,11 +192,14 @@ def user_login(login: str, pwd_plain: str):
             print("Konto zablokowane.")
             return False
 
-        # odszyfrowanie lub porównanie do wstecznie zgodnego plaintextu
+        # odszyfrowanie lub porownanie do wstecznie zgodnego plaintextu
         _, stored_plain = _try_decrypt_pwd_to_str(stored_sec)
 
         if stored_plain == pwd_plain:
-            cur.execute("UPDATE dbo.users SET failed_attempts = 0 WHERE login = ?", (login,))
+            cur.execute(
+                "UPDATE dbo.users SET failed_attempts = 0 WHERE login = ?",
+                (login,),
+            )
             conn.commit()
             return True
         else:
@@ -172,22 +207,23 @@ def user_login(login: str, pwd_plain: str):
             if new_attempts >= 5:
                 cur.execute(
                     "UPDATE dbo.users SET failed_attempts = ?, is_locked = 1 WHERE login = ?",
-                    (new_attempts, login)
+                    (new_attempts, login),
                 )
                 conn.commit()
-                print("Konto zablokowane po 5 nieudanych próbach logowania.")
+                print("Konto zablokowane po 5 nieudanych probach logowania.")
             else:
                 cur.execute(
                     "UPDATE dbo.users SET failed_attempts = ? WHERE login = ?",
-                    (new_attempts, login)
+                    (new_attempts, login),
                 )
                 conn.commit()
-                print(f"Błędne dane logowania. Próba {new_attempts}/5.")
+                print(f"Bledne dane logowania. Proba {new_attempts}/5.")
             return False
 
     except Exception as e:
-        print(f"Błąd logowania: {e}")
+        print(f"Blad logowania: {e}")
         return False
     finally:
         if cur is not None:
             cur.close()
+        conn.close()

@@ -2,37 +2,44 @@ import getpass
 from datetime import datetime
 from connection_database import insert_user, check_user_exists, connect_to_database, user_login
 from settings_edit import settings_modify
-
+import sys
 
 def menu_registration():
-    """Rejestruje nowego użytkownika w dbo.users. Zwraca True/False."""
+    """Rejestruje nowego uzytkownika w dbo.users. Zwraca True/False."""
     conn = connect_to_database()
     if conn is False:
-        print("Brak połączenia z bazą.")
+        print("Brak polaczenia z baza.")
         return False
 
-    login = input("Podaj login: ").strip()
-    if not login:
-        print("Login nie może być pusty.")
-        return False
+    try:
+        login = input("Podaj login: ").strip()
+        if not login:
+            print("Login nie moze byc pusty.")
+            return False
 
-    pwd_plain = getpass.getpass("Podaj hasło: ")
-    if not pwd_plain:
-        print("Hasło nie może być puste.")
-        return False
+        pwd_plain = getpass.getpass("Podaj haslo: ")
+        if not pwd_plain:
+            print("Haslo nie moze byc puste.")
+            return False
 
-    if check_user_exists(conn, login):
-        print("Użytkownik o takim loginie już istnieje.")
-        return False
+        exists = check_user_exists(conn, login)
+        if exists is None:
+            print("Blad przy sprawdzaniu uzytkownika. Sprobuj ponownie.")
+            return False
+        if exists:
+            print("Uzytkownik o takim loginie juz istnieje.")
+            return False
 
-    now = datetime.utcnow()
-    if insert_user(conn, login, pwd_plain, now):
-        print(f"Użytkownik '{login}' został zarejestrowany.")
-        return True
-    else:
-        print("Błąd podczas rejestracji.")
-        return False
-
+        now = datetime.utcnow()
+        if insert_user(conn, login, pwd_plain, now):
+            print(f"Uzytkownik '{login}' zostal zarejestrowany.")
+            return True
+        else:
+            print("Blad podczas rejestracji.")
+            return False
+    finally:
+        conn.close()
+        
 def menu_login():
     """Pobiera dane logowania od użytkownika, waliduje i przekazuje do bazy."""
     login = input("Podaj login: ").strip()

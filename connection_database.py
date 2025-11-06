@@ -155,7 +155,7 @@ def check_user_exists(conn, login):
         return cur.fetchone() is not None
     except Exception as e:
         print("Blad przy sprawdzaniu uzytkownika:", e)
-        return False
+        return None
     finally:
         if cur is not None:
             cur.close()

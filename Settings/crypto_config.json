@@ -3,5 +3,7 @@
   "kid": "aes-key-1",
   "alg": "A256CTR",
   "created_at": "2025-11-01T16:37:43.552269+00:00",
-  "k_b64": "2V+g5JR25rPIfIACu/iKm0iW+D22UKctxKmicmX8DLU="
+  "k_b64": "2V+g5JR25rPIfIACu/iKm0iW+D22UKctxKmicmX8DLU=",
+  "aes_mode": "EAX",
+  "key_size": 256
 }

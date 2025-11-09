@@ -1,5 +1,5 @@
-from db_connection import connect, disconnect
-from tableusers_creation import ensure_users_table
+from .db_connection import connect, disconnect
+from .tableusers_creation import ensure_users_table
 
 
 def create_user(

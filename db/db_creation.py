@@ -1,4 +1,4 @@
-from db_connection import connect, disconnect
+from .db_connection import connect, disconnect
 
 def ensure_database_exists(db_name: str = "password_manager", config_path: str = "config/db_config.json") -> bool:
     cn = connect(config_path)

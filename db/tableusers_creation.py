@@ -1,5 +1,5 @@
-from db_connection import connect, disconnect
-from db_creation import ensure_database_exists
+from .db_connection import connect, disconnect
+from .db_creation import ensure_database_exists
 
 def ensure_users_table(
     db_name: str = "password_manager",

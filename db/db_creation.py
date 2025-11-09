@@ -5,21 +5,25 @@ def ensure_database_exists(db_name: str = "password_manager", config_path: str =
     try:
         cur = cn.cursor()
         try:
-            
-            cur.execute("SELECT DB_ID(?)", db_name) # 1 - sprawdzenie
+            # 1 - sprawdzenie
+            cur.execute("""
+                DECLARE @db sysname = ?;
+                SELECT DB_ID(@db);
+            """, db_name)
             exists_before = cur.fetchone()[0] is not None
             if exists_before:
                 return False
 
-           
-            prev_autocommit = cn.autocommit  # 2 - utworzenie w autocommit
+            # 2 - utworzenie w autocommit
+            prev_autocommit = cn.autocommit
             cn.autocommit = True
             try:
                 cur.execute("""
 IF DB_ID(?) IS NULL
 BEGIN
     DECLARE @n sysname = ?;
-    EXEC(N'CREATE DATABASE ' + QUOTENAME(@n));
+    DECLARE @sql nvarchar(max) = N'CREATE DATABASE [' + REPLACE(@n, ']', ']]') + N']';
+    EXEC(@sql);
 END
 """, db_name, db_name)
             finally:

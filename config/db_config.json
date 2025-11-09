@@ -1,0 +1,11 @@
+{
+  "engine": "mssql",
+  "driver": "ODBC Driver 17 for SQL Server",
+  "server": "localhost",
+  "port": 1433,
+  "database": "password_manager",
+  "username": "sa",
+  "password": "dominik11062002!",
+  "trust_server_certificate": true,
+  "timeout": 5
+}

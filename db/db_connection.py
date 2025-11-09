@@ -1,8 +1,8 @@
 import json
 import pyodbc
 
-#Logika połaczenia z baza danych, uzywane dane do polaczenia sa z pliku json config\db_config.json
-def connect(path: str = "config/db_config.json"):
+
+def connect(path: str = "config/db_config.json"): #Logika połaczenia z baza danych, uzywane dane do polaczenia sa z pliku json config\db_config.json
     with open(path, "r", encoding="utf-8") as f:
         c = json.load(f)
 
@@ -15,7 +15,6 @@ def connect(path: str = "config/db_config.json"):
         f"SERVER={server}",
         "Encrypt=yes",
         f"TrustServerCertificate={trust}",
-        # Brak wpisu DATABASE - laczenie tylko do instancji
     ]
 
     if c.get("username") and c.get("password"):
@@ -28,15 +27,15 @@ def connect(path: str = "config/db_config.json"):
     return pyodbc.connect(conn_str, timeout=timeout, autocommit=False)
 
 
-# Logika rozłączania z bazą danych
-def disconnect(conn) -> None:
+
+def disconnect(conn) -> None: # Logika rozłączania z bazą danych
     if conn:
         try:
             conn.close()
         except:
             pass
 
-
+""" pozostawiona logika do testowania bazy danych.
 def testbazy():
     conn = None
     try:
@@ -49,3 +48,4 @@ def testbazy():
         disconnect(conn)
 
 testbazy()
+"""

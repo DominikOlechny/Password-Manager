@@ -1,2 +1,3 @@
 1. 09.11.2025 - Utworzenie logiki połączenia z bazą danych i ustawień w pliku json.
 2. 09.11.2025 - Logika tworzenia tabeli użytkowników
+3. 09.11.2025 - Logika tworzenie i sprawdzania czy użytkownik istnieje

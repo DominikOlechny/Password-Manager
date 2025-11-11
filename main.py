@@ -138,7 +138,6 @@ def login_user() -> None:
             try:
                 add_password_entry(
                     user_id=user_id,
-                    user_login=user_login,
                     service=service,
                     account_login=account_login,
                     account_password=account_password.encode("utf-8"),

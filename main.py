@@ -11,7 +11,7 @@ from db.tablepassword_crud import (
     delete_password_entry,
 )
 from db.tableusers_insertandverify import create_user, verify_user
-from security.encrypt import encrypt_with_json_key
+from security.encrypt import encrypt_with_json_key, encrypt_with_user_secret
 
 
 def prompt_credentials(*, confirm_password: bool = False) -> tuple[str, str] | None:
@@ -46,6 +46,10 @@ def register_user() -> None:
     try:
         encrypted_password = encrypt_with_json_key(password).encode("ascii")
         create_user(login=login, secured_pwd=encrypted_password)
+    except FileNotFoundError:
+        print(
+            "\n[!] Brak klucza aplikacji w config/key.json. Skontaktuj się z administratorem.\n"
+        )
     except pyodbc.IntegrityError:
         print("\n[!] Użytkownik o podanym loginie już istnieje.\n")
     except pyodbc.Error as exc:
@@ -96,6 +100,7 @@ def login_user() -> None:
         return
 
     user_id, user_login = user
+    user_secret = password
     print("\n[+] Logowanie zakończone sukcesem.\n")
 
     while True:
@@ -138,9 +143,9 @@ def login_user() -> None:
                     continue
 
             try:
-                encrypted_password = (
-                    encrypt_with_json_key(account_password).encode("ascii")
-                )
+                encrypted_password = encrypt_with_user_secret(
+                    account_password, user_secret
+                ).encode("ascii")
                 add_password_entry(
                     user_id=user_id,
                     service=service,
@@ -182,9 +187,9 @@ def login_user() -> None:
                 if not new_password:
                     print("\n[!] Hasło nie może być puste.\n")
                     continue
-                new_password_bytes = encrypt_with_json_key(new_password).encode(
-                    "ascii"
-                )
+                new_password_bytes = encrypt_with_user_secret(
+                    new_password, user_secret
+                ).encode("ascii")
 
             expire_raw = input(
                 "Nowa data wygaśnięcia (YYYY-MM-DD) [puste - bez zmian]: "
@@ -223,10 +228,10 @@ def login_user() -> None:
             entry_id = int(entry_raw)
 
             confirm = input(
-                f"Czy na pewno usunąć wpis {entry_id}? [t/N]: "
+                "Czy na pewno chcesz usunąć ten wpis? [t/N]: "
             ).strip().lower()
             if confirm != "t":
-                print("\n[-] Anulowano usuwanie.\n")
+                print("\n[-] Anulowano usunięcie.\n")
                 continue
 
             try:
@@ -239,40 +244,40 @@ def login_user() -> None:
                 else:
                     print("\n[-] Nie znaleziono wpisu o podanym ID.\n")
 
-        elif choice.lower() == "q":
-            print("\n[-] Wylogowano.\n")
+        elif choice.upper() == "Q":
+            print("\n[-] Wylogowano użytkownika.\n")
             break
 
         else:
-            print("\n[!] Nieprawidłowa opcja menu.\n")
+            print("\n[!] Nieprawidłowa opcja.\n")
 
 
 def main() -> None:
-    """Menu główne aplikacji."""
+    """Główne menu aplikacji."""
     while True:
-        print("=" * 40)
-        print("System Bezpiecznego Zarządzania Hasłami")
-        print("=" * 40)
-        print("1. Rejestracja użytkownika")
-        print("2. Logowanie")
+        print("-" * 40)
+        print("Menedżer haseł - menu główne")
+        print("-" * 40)
+        print("1. Zaloguj")
+        print("2. Zarejestruj nowe konto")
         print("Q. Zakończ")
 
         choice = input("\nWybierz opcję: ").strip()
 
         if choice == "1":
-            register_user()
-        elif choice == "2":
             login_user()
-        elif choice.lower() == "q":
-            print("\n[-] Zakończono działanie programu.\n")
+        elif choice == "2":
+            register_user()
+        elif choice.upper() == "Q":
+            print("\n[-] Zamykanie aplikacji.\n")
             break
         else:
-            print("\n[!] Nieprawidłowa opcja menu.\n")
+            print("\n[!] Nieprawidłowa opcja.\n")
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n[-] Pr przerwane przez użytkownika.\n")
-        sys.exit(0)
+        print("\n\n[-] Przerwano przez użytkownika.\n")
+        sys.exit(1)

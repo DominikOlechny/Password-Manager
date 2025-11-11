@@ -1,6 +1,5 @@
 """Proste pomocnicze funkcje AES do odszyfrowywania haseł i danych."""
 
-
 import base64
 import hashlib
 import os
@@ -8,7 +7,12 @@ from pathlib import Path
 
 from Crypto.Cipher import AES
 
-from .encrypt import KEY_FILE, _ensure_json_key, _DEFAULT_LOGIN_SECRET
+from .encrypt import (
+    KEY_FILE,
+    _DEFAULT_LOGIN_SECRET,
+    _ensure_json_key,
+    _ensure_user_secret_key,
+)
 
 
 def _aes_decrypt(token: str, key: bytes) -> bytes:
@@ -45,4 +49,11 @@ def decrypt_with_json_key(
 
     key_path = Path(key_file) if key_file is not None else KEY_FILE
     key = _ensure_json_key(key_path, create=False)
+    return _aes_decrypt(token, key)
+
+
+def decrypt_with_user_secret(token: str, secret: str | bytes) -> bytes:
+    """Odszyfrowuje dane zabezpieczone hasłem zalogowanego użytkownika."""
+
+    key = _ensure_user_secret_key(secret)
     return _aes_decrypt(token, key)

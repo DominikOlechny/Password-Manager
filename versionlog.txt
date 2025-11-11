@@ -3,3 +3,5 @@
 3. 09.11.2025 - Logika tworzenie i sprawdzania czy użytkownik istnieje
 4. 09.11.2025 - Logowanie, rejestracja i proste menu
 5. 11.11.2025 - Stworzenie automatycznego tworzenia bazy danych haseł po stworzeniu konta.
+6. 11.11.2025 - Dodanie bazy danych użytkowników
+6. 11.11.2025 - Dodanie szyfrowania użytkowników.

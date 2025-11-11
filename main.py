@@ -11,6 +11,7 @@ from db.tablepassword_crud import (
     delete_password_entry,
 )
 from db.tableusers_insertandverify import create_user, verify_user
+from security.encrypt import encrypt_with_json_key
 
 
 def prompt_credentials(*, confirm_password: bool = False) -> tuple[str, str] | None:
@@ -43,9 +44,8 @@ def register_user() -> None:
     login, password = credentials
 
     try:
-        # na tym etapie zakładamy, że secured_pwd = password.encode(...)
-        # warstwa bezpieczeństwa (hash/szyfrowanie) może być dodana wyżej
-        create_user(login=login, secured_pwd=password.encode("utf-8"))
+        encrypted_password = encrypt_with_json_key(password).encode("ascii")
+        create_user(login=login, secured_pwd=encrypted_password)
     except pyodbc.IntegrityError:
         print("\n[!] Użytkownik o podanym loginie już istnieje.\n")
     except pyodbc.Error as exc:
@@ -86,7 +86,7 @@ def login_user() -> None:
     login, password = credentials
 
     try:
-        user = verify_user(login=login, secured_pwd=password.encode("utf-8"))
+        user = verify_user(login=login, password=password)
     except pyodbc.Error as exc:
         print(f"\n[!] Błąd podczas logowania: {exc}.\n")
         return
@@ -126,7 +126,9 @@ def login_user() -> None:
                 print("\n[!] Hasło do usługi nie może być puste.\n")
                 continue
 
-            expire_raw = input("Data wygaśnięcia (YYYY-MM-DD) [opcjonalnie]: ").strip()
+            expire_raw = input(
+                "Data wygaśnięcia (YYYY-MM-DD) [opcjonalnie]: "
+            ).strip()
             expire_date = None
             if expire_raw:
                 try:
@@ -136,11 +138,14 @@ def login_user() -> None:
                     continue
 
             try:
+                encrypted_password = (
+                    encrypt_with_json_key(account_password).encode("ascii")
+                )
                 add_password_entry(
                     user_id=user_id,
                     service=service,
                     account_login=account_login,
-                    account_password=account_password.encode("utf-8"),
+                    account_password=encrypted_password,
                     expire_date=expire_date,
                 )
             except pyodbc.Error as exc:
@@ -177,7 +182,9 @@ def login_user() -> None:
                 if not new_password:
                     print("\n[!] Hasło nie może być puste.\n")
                     continue
-                new_password_bytes = new_password.encode("utf-8")
+                new_password_bytes = encrypt_with_json_key(new_password).encode(
+                    "ascii"
+                )
 
             expire_raw = input(
                 "Nowa data wygaśnięcia (YYYY-MM-DD) [puste - bez zmian]: "
@@ -203,9 +210,9 @@ def login_user() -> None:
                 print(f"\n[!] Błąd podczas edycji hasła: {exc}.\n")
             else:
                 if updated:
-                    print("\n[+] Hasło zostało zaktualizowane.\n")
+                    print("\n[+] Wpis został zaktualizowany.\n")
                 else:
-                    print("\n[!] Nie znaleziono wpisu o podanym ID.\n")
+                    print("\n[-] Nie znaleziono wpisu o podanym ID.\n")
 
         elif choice == "4":
             show_user_entries(user_id)
@@ -216,42 +223,39 @@ def login_user() -> None:
             entry_id = int(entry_raw)
 
             confirm = input(
-                f"Czy na pewno usunąć wpis ID {entry_id}? [t/N]: "
+                f"Czy na pewno usunąć wpis {entry_id}? [t/N]: "
             ).strip().lower()
             if confirm != "t":
                 print("\n[-] Anulowano usuwanie.\n")
                 continue
 
             try:
-                deleted = delete_password_entry(
-                    user_id=user_id,
-                    entry_id=entry_id,
-                )
+                deleted = delete_password_entry(user_id=user_id, entry_id=entry_id)
             except pyodbc.Error as exc:
                 print(f"\n[!] Błąd podczas usuwania hasła: {exc}.\n")
             else:
                 if deleted:
                     print("\n[+] Wpis został usunięty.\n")
                 else:
-                    print("\n[!] Nie znaleziono wpisu o podanym ID.\n")
+                    print("\n[-] Nie znaleziono wpisu o podanym ID.\n")
 
-        elif choice in {"q", "Q"}:
+        elif choice.lower() == "q":
             print("\n[-] Wylogowano.\n")
-            return
+            break
+
         else:
-            print("\n[!] Nieznana opcja, spróbuj ponownie.\n")
+            print("\n[!] Nieprawidłowa opcja menu.\n")
 
 
 def main() -> None:
-    """Prosty interfejs wiersza poleceń dla menedżera haseł."""
+    """Menu główne aplikacji."""
     while True:
         print("=" * 40)
-        print("Menadżer haseł - menu główne")
+        print("System Bezpiecznego Zarządzania Hasłami")
         print("=" * 40)
-        print("1. Zarejestruj nowego użytkownika")
-        print("2. Zaloguj użytkownika")
-        print("3. Wyjdź")
-        print("Q. Wyjdź")
+        print("1. Rejestracja użytkownika")
+        print("2. Logowanie")
+        print("Q. Zakończ")
 
         choice = input("\nWybierz opcję: ").strip()
 
@@ -259,16 +263,16 @@ def main() -> None:
             register_user()
         elif choice == "2":
             login_user()
-        elif choice in {"3", "q", "Q"}:
-            print("\nDo zobaczenia.\n")
-            return
+        elif choice.lower() == "q":
+            print("\n[-] Zakończono działanie programu.\n")
+            break
         else:
-            print("\n[!] Nieznana opcja, spróbuj ponownie.\n")
+            print("\n[!] Nieprawidłowa opcja menu.\n")
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\nZatrzymano przez użytkownika.")
+        print("\n\n[-] Pr przerwane przez użytkownika.\n")
         sys.exit(0)

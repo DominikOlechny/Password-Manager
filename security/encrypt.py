@@ -11,7 +11,7 @@ from typing import Union
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
-KEY_FILE = Path(__file__).with_name("key.json")
+KEY_FILE = Path(__file__).parent.parent / "config" / "key.json"
 _DEFAULT_LOGIN_SECRET = "PASSWORD_MANAGER_LOGIN_SECRET"
 
 

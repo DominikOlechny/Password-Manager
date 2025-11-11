@@ -2,20 +2,18 @@ from __future__ import annotations
 from datetime import datetime
 import pyodbc
 
-from .db_connection import connect, disconnect
-from .tablepassword_creation import ensure_password_store_for_user
+from db.db_connection import connect, disconnect
+from db.tablepassword_creation import ensure_password_store_for_user
 
 
-def _get_user_table_name(cur, user_id: int, user_login: str | None = None) -> str:
+def _get_user_table_name(cur, user_id: int) -> str:
     """Zwraca w pełni kwalifikowaną nazwę tabeli haseł dla użytkownika."""
-    if user_login is None:
-        cur.execute("SELECT login FROM dbo.users WHERE users_id = ?", user_id)
-        row = cur.fetchone()
-        if not row or not row[0]:
-            raise ValueError(f"user_id {user_id} not found in dbo.users")
-        login = str(row[0])
-    else:
-        login = str(user_login)
+    cur.execute("SELECT login FROM dbo.users WHERE users_id = ?", user_id)
+    row = cur.fetchone()
+    if not row or not row[0]:
+        raise ValueError(f"user_id {user_id} not found in dbo.users")
+
+    login = str(row[0])
 
     # Ucieczka znaku ']' w nazwie loginu
     bracketed_login = login.replace("]", "]]")
@@ -24,7 +22,6 @@ def _get_user_table_name(cur, user_id: int, user_login: str | None = None) -> st
 
 def add_password_entry(
     user_id: int,
-    user_login: str,
     service: str,
     account_login: str,
     account_password: bytes,
@@ -43,12 +40,12 @@ def add_password_entry(
     try:
         cur = conn.cursor()
         cur.execute("USE [password_manager]")
-        table_name = _get_user_table_name(cur, user_id, user_login=user_login)
+        table_name = _get_user_table_name(cur, user_id)
+
         cur.execute(
             f"""
             INSERT INTO {table_name} (
                 user_id,
-                user_login,
                 service,
                 login,
                 password,
@@ -57,10 +54,9 @@ def add_password_entry(
                 expire_date
             )
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, SYSUTCDATETIME(), SYSUTCDATETIME(), ?)
+            VALUES (?, ?, ?, ?, SYSUTCDATETIME(), SYSUTCDATETIME(), ?)
             """,
             user_id,
-            user_login,
             service,
             account_login,
             account_password,
@@ -94,9 +90,15 @@ def list_password_entries(
         cur = conn.cursor()
         cur.execute("USE [password_manager]")
         table_name = _get_user_table_name(cur, user_id)
+
         cur.execute(
             f"""
-            SELECT id, service, login, created_at, expire_date
+            SELECT
+                id,
+                service,
+                login,
+                created_at,
+                expire_date
             FROM {table_name}
             WHERE user_id = ?
             ORDER BY created_at DESC, id DESC
@@ -105,10 +107,17 @@ def list_password_entries(
         )
         rows = cur.fetchall()
         cur.close()
-        result = []
+
+        result: list[tuple[int, str, str, datetime, datetime | None]] = []
         for r in rows:
             result.append(
-                (int(r.id), str(r.service), str(r.login), r.created_at, r.expire_date)
+                (
+                    int(r.id),
+                    str(r.service),
+                    str(r.login),
+                    r.created_at,
+                    r.expire_date,
+                )
             )
         return result
     finally:
@@ -137,6 +146,7 @@ def update_password_entry(
         cur = conn.cursor()
         cur.execute("USE [password_manager]")
         table_name = _get_user_table_name(cur, user_id)
+
         cur.execute(
             f"""
             UPDATE {table_name}
@@ -184,6 +194,7 @@ def delete_password_entry(
         cur = conn.cursor()
         cur.execute("USE [password_manager]")
         table_name = _get_user_table_name(cur, user_id)
+
         cur.execute(
             f"DELETE FROM {table_name} WHERE id = ? AND user_id = ?",
             entry_id,

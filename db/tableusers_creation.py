@@ -1,7 +1,7 @@
-from .db_connection import connect, disconnect
-from .db_creation import ensure_database_exists
+from .db_connection import connect, disconnect #importowanie funkcji connect i disconnect z pliku db_connection.py
+from .db_creation import ensure_database_exists # importowanie funkcji ensure_database_exists z pliku db_creation.py
 
-def ensure_users_table(
+def ensure_users_table( #upewnij się, że tabela użytkowników istnieje
     db_name: str = "password_manager",
     config_path: str = "config/db_config.json",
 ) -> bool:

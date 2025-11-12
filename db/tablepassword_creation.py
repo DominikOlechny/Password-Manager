@@ -1,10 +1,8 @@
-from __future__ import annotations
-
-from .db_connection import connect, disconnect
-from .tableusers_creation import ensure_users_table
+from .db_connection import connect, disconnect #importowanie funkcji connect i disconnect z pliku db_connection.py
+from .tableusers_creation import ensure_users_table #importowanie funkcji ensure_users_table z pliku tableusers_creation.py
 
 
-def ensure_password_store_for_user(
+def ensure_password_store_for_user( #upewnij się, że tabela przechowywania haseł dla użytkownika istnieje
     user_id: int,
     *,
     db_name: str = "password_manager",
@@ -20,13 +18,13 @@ def ensure_password_store_for_user(
 
     ensure_users_table(db_name=db_name, config_path=config_path)
 
-    own_connection = conn is None
-    if own_connection:
+    own_connection = conn is None #sprawdzenie czy przekazano połączenie
+    if own_connection: #jeżeli nie to nawiąż połączenie
         conn = connect(config_path)
-    cur = conn.cursor()
+    cur = conn.cursor() #utworzenie kursora do wykonywania zapytań SQL
     try:
-        escaped_db = db_name.replace("]", "]]")
-        cur.execute(f"USE [{escaped_db}]")
+        escaped_db = db_name.replace("]", "]]") #ucieczka nazwy bazy danych
+        cur.execute(f"USE [{escaped_db}]") #przełączenie na odpowiednią bazę danych
 
         # Pobierz login dla users_id
         cur.execute("SELECT login FROM dbo.users WHERE users_id = ?", user_id)
@@ -51,11 +49,11 @@ def ensure_password_store_for_user(
             """,
             f"{login} entries",
         )
-        exists_before = cur.fetchone() is not None
+        exists_before = cur.fetchone() is not None #sprawdzenie czy tabela już istnieje
 
-        if exists_before:
+        if exists_before: #jeżeli tabela istnieje to zwróć False
             created = False
-        else:
+        else: 
             # Utwórz tabelę 1:1 z dokumentacją i FK do users
             ddl = f"""
 CREATE TABLE {full_table_name} (
@@ -76,18 +74,18 @@ CREATE INDEX IX_{login.replace(' ', '_')}_entries_service ON {full_table_name}(s
             cur.execute(ddl)
             created = True
 
-    except Exception:
+    except Exception: #w przypadku wyjątku zamknij kursor i rozłącz jeżeli to własne połączenie
         cur.close()
         if own_connection:
             conn.rollback()
             disconnect(conn)
         raise
-    else:
+    else: #w przypadku sukcesu zamknij kursor i rozłącz jeżeli to własne połączenie
         cur.close()
         if own_connection:
             conn.commit()
             disconnect(conn)
-        return created
+        return created #zwrócenie czy tabela została utworzona
 
 
-__all__ = ["ensure_password_store_for_user"]
+__all__ = ["ensure_password_store_for_user"] #eksportowanie funkcji ensure_password_store_for_user

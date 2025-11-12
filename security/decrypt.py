@@ -1,13 +1,11 @@
-"""Proste pomocnicze funkcje AES do odszyfrowywania haseł i danych."""
+import base64 # importowanie modułu base64 do kodowania i dekodowania danych w formacie base64
+import hashlib # importowanie modułu hashlib do tworzenia skrótów kryptograficznych
+import os # importowanie modułu os do interakcji z systemem operacyjnym
+from pathlib import Path # importowanie klasy Path z modułu pathlib do obsługi ścieżek plików
 
-import base64
-import hashlib
-import os
-from pathlib import Path
+from Crypto.Cipher import AES # importowanie klasy AES z modułu Crypto.Cipher do szyfrowania i deszyfrowania danych
 
-from Crypto.Cipher import AES
-
-from .encrypt import (
+from .encrypt import ( # importowanie stałych i funkcji z pliku encrypt.py
     KEY_FILE,
     _DEFAULT_LOGIN_SECRET,
     _ensure_json_key,
@@ -15,17 +13,17 @@ from .encrypt import (
 )
 
 
-def _aes_decrypt(token: str, key: bytes) -> bytes:
+def _aes_decrypt(token: str, key: bytes) -> bytes: #funkcja do odszyfrowywania danych za pomocą AES
     """Odwrotność funkcji :func:`security.encrypt._aes_encrypt`."""
 
-    raw = base64.b64decode(token.encode("ascii"))
-    nonce, tag, ciphertext = raw[:16], raw[16:32], raw[32:]
-    cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
-    return cipher.decrypt_and_verify(ciphertext, tag)
+    raw = base64.b64decode(token.encode("ascii")) #dekodowanie danych z formatu base64
+    nonce, tag, ciphertext = raw[:16], raw[16:32], raw[32:] #wydzielenie nonce, tagu i zaszyfrowanego tekstu
+    cipher = AES.new(key, AES.MODE_EAX, nonce=nonce) #utworzenie obiektu szyfrującego AES w trybie EAX
+    return cipher.decrypt_and_verify(ciphertext, tag) #odszyfrowanie i weryfikacja danych
 
 
-def decrypt_login_credentials(
-    encrypted_login: str,
+def decrypt_login_credentials( #odszyfrowuje wartości z encrypt.encrypt_login_credentials
+    encrypted_login: str, 
     encrypted_password: str,
     *,
     pepper: str | None = None,
@@ -40,7 +38,7 @@ def decrypt_login_credentials(
     }
 
 
-def decrypt_with_json_key(
+def decrypt_with_json_key( #odszyfrowuje dane zabezpieczone kluczem JSON
     token: str,
     *,
     key_file: str | Path | None = None,
@@ -52,8 +50,8 @@ def decrypt_with_json_key(
     return _aes_decrypt(token, key)
 
 
-def decrypt_with_user_secret(token: str, secret: str | bytes) -> bytes:
+def decrypt_with_user_secret(token: str, secret: str | bytes) -> bytes: #odszyfrowuje dane zabezpieczone hasłem zalogowanego użytkownika
     """Odszyfrowuje dane zabezpieczone hasłem zalogowanego użytkownika."""
 
-    key = _ensure_user_secret_key(secret)
-    return _aes_decrypt(token, key)
+    key = _ensure_user_secret_key(secret) #uzyskanie klucza użytkownika
+    return _aes_decrypt(token, key) #odszyfrowanie danych

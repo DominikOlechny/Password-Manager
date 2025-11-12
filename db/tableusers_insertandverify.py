@@ -1,16 +1,14 @@
-from __future__ import annotations
+from datetime import datetime #importowanie klasy datetime z modułu datetime
 
-from datetime import datetime
+import pyodbc #importowanie modułu pyodbc do obsługi połączeń z bazą danych
 
-import pyodbc
-
-from .db_connection import connect, disconnect
-from .tableusers_creation import ensure_users_table
-from .tablepassword_creation import ensure_password_store_for_user
-from security.decrypt import decrypt_with_json_key
+from .db_connection import connect, disconnect #importowanie funkcji connect i disconnect z pliku db_connection.py
+from .tableusers_creation import ensure_users_table #importowanie funkcji ensure_users_table z pliku tableusers_creation.py
+from .tablepassword_creation import ensure_password_store_for_user #importowanie funkcji ensure_password_store_for_user z pliku tablepassword_creation.py
+from security.decrypt import decrypt_with_json_key # importowanie funkcji decrypt_with_json_key z pliku security/decrypt.py
 
 
-def create_user(
+def create_user( #tworzy nowego użytkownika w dbo.users i zwraca jego users_id
     login: str,
     secured_pwd: bytes,
     *,
@@ -33,9 +31,9 @@ def create_user(
     int
         Identyfikator nowego użytkownika (users_id).
     """
-    ensure_users_table(config_path=config_path)
-    conn = connect(config_path)
-    try:
+    ensure_users_table(config_path=config_path) #upewnij się, że tabela użytkowników istnieje
+    conn = connect(config_path) #nawiązanie połączenia z bazą danych
+    try: 
         cur = conn.cursor()
         cur.execute("USE [password_manager]")
 
@@ -88,7 +86,7 @@ def create_user(
         disconnect(conn)
 
 
-def verify_user(
+def verify_user( #weryfikuje użytkownika po loginie i haśle w postaci jawnej
     login: str,
     password: str,
     config_path: str = "config/db_config.json",
@@ -143,10 +141,10 @@ def verify_user(
 
         cur.close()
 
-        decrypted_password = decrypt_with_json_key(encrypted_password).decode("utf-8")
+        decrypted_password = decrypt_with_json_key(encrypted_password).decode("utf-8") # odszyfrowanie hasła
         if decrypted_password != password:
             return None
 
-        return user_id, user_login
+        return user_id, user_login # zwrócenie identyfikatora użytkownika i loginu
     finally:
-        disconnect(conn)
+        disconnect(conn) #rozłączenie z bazą danych

@@ -1,12 +1,11 @@
-from __future__ import annotations
-from datetime import datetime
-import pyodbc
+from datetime import datetime #importowanie klasy datetime z modułu datetime
+import pyodbc #importowanie modułu pyodbc do obsługi połączeń z bazą danych
 
-from db.db_connection import connect, disconnect
-from db.tablepassword_creation import ensure_password_store_for_user
+from db.db_connection import connect, disconnect #importowanie funkcji connect i disconnect z pliku db_connection.py
+from db.tablepassword_creation import ensure_password_store_for_user #importowanie funkcji ensure_password_store_for_user z pliku tablepassword_creation.py
 
 
-def _get_user_table_name(cur, user_id: int) -> str:
+def _get_user_table_name(cur, user_id: int) -> str: #pomocnicza funkcja do uzyskania nazwy tabeli haseł użytkownika
     """Zwraca w pełni kwalifikowaną nazwę tabeli haseł dla użytkownika."""
     cur.execute("SELECT login FROM dbo.users WHERE users_id = ?", user_id)
     row = cur.fetchone()
@@ -20,7 +19,7 @@ def _get_user_table_name(cur, user_id: int) -> str:
     return f"dbo.[{bracketed_login} entries]"
 
 
-def add_password_entry(
+def add_password_entry( #dodaje nowe hasło użytkownika do dedykowanej tabeli haseł
     user_id: int,
     service: str,
     account_login: str,
@@ -30,19 +29,19 @@ def add_password_entry(
     config_path: str = "config/db_config.json",
 ) -> int:
     """Dodaje nowe hasło użytkownika do dedykowanej tabeli haseł."""
-    ensure_password_store_for_user(
+    ensure_password_store_for_user( #upewnij się, że tabela przechowywania haseł dla użytkownika istnieje
         user_id=user_id,
         db_name="password_manager",
         config_path=config_path,
     )
 
-    conn = connect(config_path)
+    conn = connect(config_path) #nawiązanie połączenia z bazą danych
     try:
         cur = conn.cursor()
         cur.execute("USE [password_manager]")
         table_name = _get_user_table_name(cur, user_id)
 
-        cur.execute(
+        cur.execute( #dodanie nowego wpisu hasła do tabeli
             f"""
             INSERT INTO {table_name} (
                 user_id,
@@ -73,7 +72,7 @@ def add_password_entry(
         disconnect(conn)
 
 
-def list_password_entries(
+def list_password_entries( #wyświetla listę wpisów użytkownika
     user_id: int,
     *,
     config_path: str = "config/db_config.json",
@@ -124,7 +123,7 @@ def list_password_entries(
         disconnect(conn)
 
 
-def update_password_entry(
+def update_password_entry( #aktualizuje wpis hasła użytkownika
     user_id: int,
     entry_id: int,
     *,
@@ -176,7 +175,7 @@ def update_password_entry(
         disconnect(conn)
 
 
-def delete_password_entry(
+def delete_password_entry( #usuwa wpis hasła użytkownika o podanym ID
     user_id: int,
     entry_id: int,
     *,
@@ -205,7 +204,7 @@ def delete_password_entry(
         cur.close()
         return affected == 1
     except Exception:
-        conn.rollback()
+        conn.rollback() 
         raise
     finally:
-        disconnect(conn)
+        disconnect(conn) #rozłączenie z bazą danych
